@@ -1,0 +1,12 @@
+services:
+  prayer-bot:
+    build: .
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 1m
+    env_file:
+      - .env
+    environment:
+      HEALTH_PORT: ${HEALTH_PORT:-3000}
+    ports:
+      - "127.0.0.1:${HEALTH_PORT:-3000}:${HEALTH_PORT:-3000}"

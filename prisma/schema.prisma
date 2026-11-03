@@ -1,0 +1,241 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["muslim_prayer_bot"]
+}
+
+enum TimeFormat {
+  H12
+  H24
+
+  @@schema("muslim_prayer_bot")
+}
+
+enum PrayerName {
+  FAJR
+  DHUHR
+  ASR
+  MAGHRIB
+  ISHA
+
+  @@schema("muslim_prayer_bot")
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@schema("muslim_prayer_bot")
+}
+
+model User {
+  id                    String                       @id @default(cuid())
+  discordId             String                       @unique @db.VarChar(32)
+  timeFormat            TimeFormat                   @default(H12)
+  timezone              String?                      @db.VarChar(64)
+  countryCode           String?                      @db.VarChar(2)
+  city                  String?                      @db.VarChar(120)
+  latitude              Float?
+  longitude             Float?
+  locationUpdatedAt     DateTime?                    @db.Timestamptz(3)
+  pausedUntil           DateTime?                    @db.Timestamptz(3)
+  dailyChecklistEnabled Boolean                      @default(true)
+  scheduleVersion       Int                          @default(1)
+  createdAt             DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                     @updatedAt @db.Timestamptz(3)
+  prayerSettings        UserPrayerSettings?
+  reminders             UserReminderSettings[]
+  prayerRecords         PrayerRecord[]
+  dailyProgress         DailyPrayerProgress[]
+  streak                UserStreak?
+  guildPrivacy          GuildMemberPrivacySettings[]
+  schedules             PrayerSchedule[]
+  notificationJobs      NotificationJob[]
+  deliveryLogs          NotificationDeliveryLog[]
+  auditLogs             AuditLog[]
+
+  @@index([timezone])
+  @@schema("muslim_prayer_bot")
+}
+
+model UserPrayerSettings {
+  userId                   String   @id
+  calculationMethod        String   @default("MUSLIM_WORLD_LEAGUE") @db.VarChar(40)
+  asrMethod                String   @default("STANDARD") @db.VarChar(16)
+  highLatitudeRule         String?  @db.VarChar(32)
+  fajrAngle                Float?
+  ishaAngle                Float?
+  ishaIntervalMinutes      Int?
+  fajrAdjustmentMinutes    Int      @default(0)
+  dhuhrAdjustmentMinutes   Int      @default(0)
+  asrAdjustmentMinutes     Int      @default(0)
+  maghribAdjustmentMinutes Int      @default(0)
+  ishaAdjustmentMinutes    Int      @default(0)
+  updatedAt                DateTime @updatedAt @db.Timestamptz(3)
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("muslim_prayer_bot")
+}
+
+model UserReminderSettings {
+  id               String     @id @default(cuid())
+  userId           String
+  prayer           PrayerName
+  enabled          Boolean    @default(true)
+  completionPrompt Boolean    @default(true)
+  minutesBefore    Int        @default(0)
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, prayer])
+  @@index([userId, enabled])
+  @@schema("muslim_prayer_bot")
+}
+
+model PrayerSchedule {
+  id               String            @id @default(cuid())
+  userId           String
+  localDate        DateTime          @db.Date
+  prayer           PrayerName
+  prayerAt         DateTime          @db.Timestamptz(3)
+  timezone         String            @db.VarChar(64)
+  scheduleVersion  Int
+  calculationKey   String            @db.VarChar(80)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationJobs NotificationJob[]
+
+  @@unique([userId, localDate, prayer, scheduleVersion])
+  @@index([prayerAt, scheduleVersion])
+  @@index([userId, localDate])
+  @@schema("muslim_prayer_bot")
+}
+
+model PrayerRecord {
+  id          String     @id @default(cuid())
+  userId      String
+  prayerDate  DateTime   @db.Date
+  prayer      PrayerName
+  completedAt DateTime   @db.Timestamptz(3)
+  source      String     @default("SELF_REPORTED") @db.VarChar(24)
+  correctedAt DateTime?  @db.Timestamptz(3)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, prayerDate, prayer])
+  @@index([userId, completedAt])
+  @@schema("muslim_prayer_bot")
+}
+
+model DailyPrayerProgress {
+  id               String    @id @default(cuid())
+  userId           String
+  prayerDate       DateTime  @db.Date
+  completedCount   Int       @default(0)
+  finalizedAt      DateTime? @db.Timestamptz(3)
+  fullyCompletedAt DateTime? @db.Timestamptz(3)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, prayerDate])
+  @@index([userId, prayerDate])
+  @@schema("muslim_prayer_bot")
+}
+
+model UserStreak {
+  userId                       String    @id
+  currentStreak                Int       @default(0)
+  longestStreak                Int       @default(0)
+  totalCompletedDays           Int       @default(0)
+  totalCompletedPrayers        Int       @default(0)
+  lastFullyCompletedPrayerDate DateTime? @db.Date
+  updatedAt                    DateTime  @updatedAt @db.Timestamptz(3)
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("muslim_prayer_bot")
+}
+
+model GuildSettings {
+  guildId              String                       @id @db.VarChar(32)
+  streakChannelId      String?                      @db.VarChar(32)
+  communityEnabled     Boolean                      @default(false)
+  leaderboardEnabled   Boolean                      @default(true)
+  updateFrequency      String                       @default("DAILY") @db.VarChar(16)
+  weeklySummaryEnabled Boolean                      @default(false)
+  createdAt            DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                     @updatedAt @db.Timestamptz(3)
+  memberPrivacy        GuildMemberPrivacySettings[]
+
+  @@schema("muslim_prayer_bot")
+}
+
+model GuildMemberPrivacySettings {
+  userId        String
+  guildId       String        @db.VarChar(32)
+  publicStreak  Boolean       @default(false)
+  showLongest   Boolean       @default(false)
+  showTotalDays Boolean       @default(false)
+  optedInAt     DateTime?     @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guild         GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@id([userId, guildId])
+  @@index([guildId, publicStreak])
+  @@schema("muslim_prayer_bot")
+}
+
+model NotificationJob {
+  id             String                    @id @default(cuid())
+  userId         String
+  scheduleId     String?
+  idempotencyKey String                    @unique @db.VarChar(160)
+  kind           String                    @db.VarChar(32)
+  dueAt          DateTime                  @db.Timestamptz(3)
+  status         JobStatus                 @default(PENDING)
+  attempts       Int                       @default(0)
+  lockedUntil    DateTime?                 @db.Timestamptz(3)
+  lastErrorCode  String?                   @db.VarChar(80)
+  createdAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  completedAt    DateTime?                 @db.Timestamptz(3)
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule       PrayerSchedule?           @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  deliveryLogs   NotificationDeliveryLog[]
+
+  @@index([status, dueAt])
+  @@index([userId, status])
+  @@schema("muslim_prayer_bot")
+}
+
+model NotificationDeliveryLog {
+  id          String           @id @default(cuid())
+  userId      String
+  jobId       String?
+  deliveredAt DateTime?        @db.Timestamptz(3)
+  failedAt    DateTime?        @db.Timestamptz(3)
+  failureCode String?          @db.VarChar(80)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job         NotificationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, failedAt])
+  @@index([jobId])
+  @@schema("muslim_prayer_bot")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String   @db.VarChar(80)
+  subjectType String   @db.VarChar(40)
+  subjectId   String?  @db.VarChar(80)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([subjectType, subjectId])
+  @@schema("muslim_prayer_bot")
+}
